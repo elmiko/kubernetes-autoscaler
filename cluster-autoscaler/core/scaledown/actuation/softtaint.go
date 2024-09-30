@@ -35,6 +35,17 @@ func UpdateSoftDeletionTaints(context *context.AutoscalingContext, uneededNodes,
 		timeBudget:    context.AutoscalingOptions.MaxBulkSoftTaintTime,
 		startTime:     now(),
 	}
+
+	neededNames := make([]string, len(neededNodes))
+	for i, n := range neededNodes {
+		neededNames[i] = n.Name
+	}
+	uneededNames := make([]string, len(uneededNodes))
+	for i, n := range uneededNodes {
+		uneededNames[i] = n.Name
+	}
+	klog.V(4).InfoS("---=== UpdateSoftDeletionTaints ===---", "neededNodes", neededNames, "uneededNodes", uneededNames)
+
 	for _, node := range neededNodes {
 		if taints.HasToBeDeletedTaint(node) {
 			// Do not consider nodes that are scheduled to be deleted
@@ -44,6 +55,7 @@ func UpdateSoftDeletionTaints(context *context.AutoscalingContext, uneededNodes,
 			continue
 		}
 		b.processWithinBudget(func() {
+			klog.V(4).Infof("cleaning deletion candidate taint for: %s", node.Name)
 			_, err := taints.CleanDeletionCandidate(node, context.ClientSet)
 			if err != nil {
 				errors = append(errors, err)
@@ -60,6 +72,7 @@ func UpdateSoftDeletionTaints(context *context.AutoscalingContext, uneededNodes,
 			continue
 		}
 		b.processWithinBudget(func() {
+			klog.V(4).Infof("adding deletion candidate taint for: %s", node.Name)
 			err := taints.MarkDeletionCandidate(node, context.ClientSet)
 			if err != nil {
 				errors = append(errors, err)
