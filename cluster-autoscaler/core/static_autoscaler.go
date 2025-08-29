@@ -308,7 +308,7 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) caerrors.AutoscalerErr
 	stateUpdateStart := time.Now()
 
 	// Get nodes and pods currently living on cluster
-	allNodes, readyNodes, typedErr := a.obtainNodeLists()
+	allNodes, readyNodes, readyUnschedulableNodes, typedErr := a.obtainNodeLists()
 	if typedErr != nil {
 		klog.Errorf("Failed to get node list: %v", typedErr)
 		return typedErr
@@ -382,7 +382,7 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) caerrors.AutoscalerErr
 		return typedErr.AddPrefix("failed to initialize RemainingPdbTracker: ")
 	}
 
-	nodeInfosForGroups, autoscalerError := a.processors.TemplateNodeInfoProvider.Process(autoscalingContext, readyNodes, daemonsets, a.taintConfig, currentTime)
+	nodeInfosForGroups, autoscalerError := a.processors.TemplateNodeInfoProvider.Process(autoscalingContext, readyNodes, readyUnschedulableNodes, daemonsets, a.taintConfig, currentTime)
 	if autoscalerError != nil {
 		klog.Errorf("Failed to get node infos for groups: %v", autoscalerError)
 		return autoscalerError.AddPrefix("failed to build node infos for node groups: ")
@@ -970,16 +970,21 @@ func (a *StaticAutoscaler) ExitCleanUp() {
 	a.clusterStateRegistry.Stop()
 }
 
-func (a *StaticAutoscaler) obtainNodeLists() ([]*apiv1.Node, []*apiv1.Node, caerrors.AutoscalerError) {
+func (a *StaticAutoscaler) obtainNodeLists() ([]*apiv1.Node, []*apiv1.Node, []*apiv1.Node, caerrors.AutoscalerError) {
 	allNodes, err := a.AllNodeLister().List()
 	if err != nil {
 		klog.Errorf("Failed to list all nodes: %v", err)
-		return nil, nil, caerrors.ToAutoscalerError(caerrors.ApiCallError, err)
+		return nil, nil, nil, caerrors.ToAutoscalerError(caerrors.ApiCallError, err)
 	}
 	readyNodes, err := a.ReadyNodeLister().List()
 	if err != nil {
 		klog.Errorf("Failed to list ready nodes: %v", err)
-		return nil, nil, caerrors.ToAutoscalerError(caerrors.ApiCallError, err)
+		return nil, nil, nil, caerrors.ToAutoscalerError(caerrors.ApiCallError, err)
+	}
+	readyUnschedulableNodes, err := a.ReadyUnschedulableNodeLister().List()
+	if err != nil {
+		klog.Errorf("Failed to list ready unschedulable nodes: %v", err)
+		return nil, nil, nil, caerrors.ToAutoscalerError(caerrors.ApiCallError, err)
 	}
 	a.reportTaintsCount(allNodes)
 
@@ -990,7 +995,11 @@ func (a *StaticAutoscaler) obtainNodeLists() ([]*apiv1.Node, []*apiv1.Node, caer
 	// TODO: Remove this call when we handle dynamically provisioned resources.
 	allNodes, readyNodes = a.processors.CustomResourcesProcessor.FilterOutNodesWithUnreadyResources(a.AutoscalingContext, allNodes, readyNodes)
 	allNodes, readyNodes = taints.FilterOutNodesWithStartupTaints(a.taintConfig, allNodes, readyNodes)
-	return allNodes, readyNodes, nil
+
+	// Filter the ready unschedulable nodes for custom processors and startup taints
+	_, readyUnschedulableNodes = a.processors.CustomResourcesProcessor.FilterOutNodesWithUnreadyResources(a.AutoscalingContext, []*apiv1.Node{}, readyUnschedulableNodes)
+	_, readyUnschedulableNodes = taints.FilterOutNodesWithStartupTaints(a.taintConfig, []*apiv1.Node{}, readyUnschedulableNodes)
+	return allNodes, readyNodes, readyUnschedulableNodes, nil
 }
 
 func filterNodesFromSelectedGroups(cp cloudprovider.CloudProvider, nodes ...*apiv1.Node) []*apiv1.Node {

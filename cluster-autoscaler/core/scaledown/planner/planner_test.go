@@ -482,7 +482,7 @@ func TestUpdateClusterState(t *testing.T) {
 			}
 			rsLister, err := kube_util.NewTestReplicaSetLister(tc.replicasSets)
 			assert.NoError(t, err)
-			registry := kube_util.NewListerRegistry(nil, nil, nil, nil, nil, nil, nil, rsLister, nil)
+			registry := kube_util.NewListerRegistry(nil, nil, nil, nil, nil, nil, nil, nil, rsLister, nil)
 			provider := testprovider.NewTestCloudProvider(nil, nil)
 			provider.AddNodeGroup("ng1", 0, 0, 0)
 			for _, node := range tc.nodes {

@@ -138,7 +138,7 @@ func TestFindUnneededNodes(t *testing.T) {
 
 	rsLister, err := kube_util.NewTestReplicaSetLister(replicaSets)
 	assert.NoError(t, err)
-	registry := kube_util.NewListerRegistry(nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
+	registry := kube_util.NewListerRegistry(nil, nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
 
 	options := config.AutoscalingOptions{
 		NodeGroupDefaults: config.NodeGroupAutoscalingOptions{
@@ -268,7 +268,7 @@ func TestFindUnneededGPUNodes(t *testing.T) {
 
 	rsLister, err := kube_util.NewTestReplicaSetLister(replicaSets)
 	assert.NoError(t, err)
-	registry := kube_util.NewListerRegistry(nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
+	registry := kube_util.NewListerRegistry(nil, nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
 
 	options := config.AutoscalingOptions{
 		NodeGroupDefaults: config.NodeGroupAutoscalingOptions{
@@ -391,7 +391,7 @@ func TestFindUnneededWithPerNodeGroupThresholds(t *testing.T) {
 
 			rsLister, err := kube_util.NewTestReplicaSetLister(replicaSets)
 			assert.NoError(t, err)
-			registry := kube_util.NewListerRegistry(nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
+			registry := kube_util.NewListerRegistry(nil, nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
 
 			context, err := NewScaleTestAutoscalingContext(globalOptions, &fake.Clientset{}, registry, provider, nil, nil)
 			assert.NoError(t, err)
@@ -468,7 +468,7 @@ func TestPodsWithPreemptionsFindUnneededNodes(t *testing.T) {
 
 	rsLister, err := kube_util.NewTestReplicaSetLister(replicaSets)
 	assert.NoError(t, err)
-	registry := kube_util.NewListerRegistry(nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
+	registry := kube_util.NewListerRegistry(nil, nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
 
 	options := config.AutoscalingOptions{
 		NodeGroupDefaults: config.NodeGroupAutoscalingOptions{
@@ -529,7 +529,7 @@ func TestFindUnneededMaxCandidates(t *testing.T) {
 
 	rsLister, err := kube_util.NewTestReplicaSetLister(replicaSets)
 	assert.NoError(t, err)
-	registry := kube_util.NewListerRegistry(nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
+	registry := kube_util.NewListerRegistry(nil, nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
 
 	options := config.AutoscalingOptions{
 		NodeGroupDefaults: config.NodeGroupAutoscalingOptions{
@@ -613,7 +613,7 @@ func TestFindUnneededEmptyNodes(t *testing.T) {
 
 	rsLister, err := kube_util.NewTestReplicaSetLister(replicaSets)
 	assert.NoError(t, err)
-	registry := kube_util.NewListerRegistry(nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
+	registry := kube_util.NewListerRegistry(nil, nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
 
 	options := config.AutoscalingOptions{
 		NodeGroupDefaults: config.NodeGroupAutoscalingOptions{
@@ -670,7 +670,7 @@ func TestFindUnneededNodePool(t *testing.T) {
 
 	rsLister, err := kube_util.NewTestReplicaSetLister(replicaSets)
 	assert.NoError(t, err)
-	registry := kube_util.NewListerRegistry(nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
+	registry := kube_util.NewListerRegistry(nil, nil, nil, podLister, pdbLister, nil, nil, nil, rsLister, nil)
 
 	options := config.AutoscalingOptions{
 		NodeGroupDefaults: config.NodeGroupAutoscalingOptions{
@@ -768,7 +768,7 @@ func TestScaleDown(t *testing.T) {
 	podLister := kube_util.NewTestPodLister([]*apiv1.Pod{p1, p2})
 	pdbLister := kube_util.NewTestPodDisruptionBudgetLister([]*policyv1.PodDisruptionBudget{})
 
-	registry := kube_util.NewListerRegistry(nil, nil, podLister, pdbLister, nil, nil, jobLister, nil, nil)
+	registry := kube_util.NewListerRegistry(nil, nil, nil, podLister, pdbLister, nil, nil, jobLister, nil, nil)
 
 	context, err := NewScaleTestAutoscalingContext(options, fakeClient, registry, provider, nil, nil)
 	assert.NoError(t, err)
@@ -1027,7 +1027,7 @@ func simpleScaleDownEmpty(t *testing.T, config *ScaleTestConfig) {
 	podLister := kube_util.NewTestPodLister([]*apiv1.Pod{})
 	pdbLister := kube_util.NewTestPodDisruptionBudgetLister([]*policyv1.PodDisruptionBudget{})
 
-	registry := kube_util.NewListerRegistry(nil, nil, podLister, pdbLister, nil, nil, nil, nil, nil)
+	registry := kube_util.NewListerRegistry(nil, nil, nil, podLister, pdbLister, nil, nil, nil, nil, nil)
 	context, err := NewScaleTestAutoscalingContext(config.Options, fakeClient, registry, provider, nil, nil)
 	assert.NoError(t, err)
 
@@ -1119,7 +1119,7 @@ func TestNoScaleDownUnready(t *testing.T) {
 	podLister := kube_util.NewTestPodLister([]*apiv1.Pod{p2})
 	pdbLister := kube_util.NewTestPodDisruptionBudgetLister([]*policyv1.PodDisruptionBudget{})
 
-	registry := kube_util.NewListerRegistry(nil, nil, podLister, pdbLister, nil, nil, nil, nil, nil)
+	registry := kube_util.NewListerRegistry(nil, nil, nil, podLister, pdbLister, nil, nil, nil, nil, nil)
 	context, err := NewScaleTestAutoscalingContext(options, fakeClient, registry, provider, nil, nil)
 	assert.NoError(t, err)
 
@@ -1233,7 +1233,7 @@ func TestScaleDownNoMove(t *testing.T) {
 	}
 	jobLister, err := kube_util.NewTestJobLister([]*batchv1.Job{&job})
 	assert.NoError(t, err)
-	registry := kube_util.NewListerRegistry(nil, nil, nil, nil, nil, nil, jobLister, nil, nil)
+	registry := kube_util.NewListerRegistry(nil, nil, nil, nil, nil, nil, nil, jobLister, nil, nil)
 
 	context, err := NewScaleTestAutoscalingContext(options, fakeClient, registry, provider, nil, nil)
 	assert.NoError(t, err)
