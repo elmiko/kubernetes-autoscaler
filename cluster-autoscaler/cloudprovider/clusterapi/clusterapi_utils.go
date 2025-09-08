@@ -48,6 +48,7 @@ const (
 	gpuTypeKey      = "capacity.cluster-autoscaler.kubernetes.io/gpu-type" // not currently used on OpenShift
 	taintsKey       = "capacity.cluster-autoscaler.kubernetes.io/taints"   // not currently used on OpenShift
 
+	machineDeploymentRevisionAnnotation = "machinedeployment.clusters.x-k8s.io/revision"
 	// UnknownArch is used if the Architecture is Unknown
 	UnknownArch SystemArchitecture = ""
 	// Amd64 is used if the Architecture is x86_64
