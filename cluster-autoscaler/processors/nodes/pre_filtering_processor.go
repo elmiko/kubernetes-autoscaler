@@ -49,11 +49,13 @@ func (n *PreFilteringScaleDownNodeProcessor) GetScaleDownCandidates(ctx *context
 	nodeGroupSize := utils.GetNodeGroupSizeMap(ctx.CloudProvider)
 
 	for _, node := range nodes {
-		if candidate, err := ctx.CloudProvider.IsNodeCandidateForDeletion(node); !candidate {
+		if candidate, err := ctx.CloudProvider.IsNodeCandidateForDeletion(node); err != nil {
+			if err != cloudprovider.ErrNotImplemented {
+				klog.Warningf("Error while checking if node is a candidate for deletion %s: %v", node.Name, err)
+				continue
+			}
+		} else if !candidate {
 			klog.V(5).Infof("Node %s is not a candidate for deletion (cloud provider determined)", node.Name)
-			continue
-		} else if err != nil && err != cloudprovider.ErrNotImplemented {
-			klog.Warningf("Error while checking if node is a candidate for deletion %s: %v", node.Name, err)
 			continue
 		}
 		nodeGroup, err := ctx.CloudProvider.NodeGroupForNode(node)

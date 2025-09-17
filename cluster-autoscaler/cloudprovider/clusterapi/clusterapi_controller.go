@@ -849,7 +849,7 @@ func (c *machineController) listMachineSetsForMachineDeployment(r *unstructured.
 	})
 	objs, err := c.machineSetInformer.Lister().ByNamespace(r.GetNamespace()).List(selector)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to list MachineSets for MachineDeployment %s: %w", r.GetName(), err)
 	}
 
 	results := make([]*unstructured.Unstructured, 0, len(objs))
