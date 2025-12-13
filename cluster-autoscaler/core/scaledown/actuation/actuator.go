@@ -236,7 +236,11 @@ func (a *Actuator) taintNodesSync(NodeGroupViews []*budgets.NodeGroupView) (time
 		}
 		// Clean up already applied taints in case of issues.
 		for taintedNode := range taintedNodes {
-			_, _ = taints.CleanToBeDeleted(taintedNode, a.ctx.ClientSet, a.ctx.CordonNodeBeforeTerminate)
+			if a.ctx.SimulationMode {
+				klog.V(0).Infof("Simulation: skipping CleanToBeDeleted for node %q", taintedNode.Name)
+			} else {
+				_, _ = taints.CleanToBeDeleted(taintedNode, a.ctx.ClientSet, a.ctx.CordonNodeBeforeTerminate)
+			}
 		}
 		if a.ctx.AutoscalingOptions.DynamicNodeDeleteDelayAfterTaintEnabled {
 			close(updateLatencyTracker.AwaitOrStopChan)
@@ -388,6 +392,11 @@ func (a *Actuator) scaleDownNodeToReport(node *apiv1.Node, drain bool) (*status.
 
 // taintNode taints the node with NoSchedule to prevent new pods scheduling on it.
 func (a *Actuator) taintNode(node *apiv1.Node) error {
+	if a.ctx.SimulationMode {
+		klog.V(0).Infof("Simluation: skipping taintNode for %q", node.Name)
+		return nil
+	}
+
 	if _, err := taints.MarkToBeDeleted(node, a.ctx.ClientSet, a.ctx.CordonNodeBeforeTerminate); err != nil {
 		a.ctx.Recorder.Eventf(node, apiv1.EventTypeWarning, "ScaleDownFailed", "failed to mark the node as toBeDeleted/unschedulable: %v", err)
 		return errors.ToAutoscalerError(errors.ApiCallError, err)

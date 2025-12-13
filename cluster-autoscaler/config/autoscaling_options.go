@@ -228,6 +228,8 @@ type AutoscalingOptions struct {
 	BalancingLabels []string
 	// AWSUseStaticInstanceList tells if AWS cloud provider use static instance type list or dynamically fetch from remote APIs.
 	AWSUseStaticInstanceList bool
+	// SimulationMode sets the autoscaler to run in simulation only mode. It will not modify the nodes in the cluster.
+	SimulationMode bool
 	// GCEOptions contain autoscaling options specific to GCE cloud provider.
 	GCEOptions GCEOptions
 	// KubeClientOpts specify options for kube client

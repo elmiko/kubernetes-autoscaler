@@ -206,7 +206,11 @@ func CleanUpAndRecordFailedScaleDownEvent(ctx *context.AutoscalingContext, node 
 		klog.Errorf("Scale-down: "+logMsgFormat+", %v, status error: %v", node.Name, errMsg, status.Err)
 	}
 	ctx.Recorder.Eventf(node, apiv1.EventTypeWarning, "ScaleDownFailed", eventMsgFormat+": %v", status.Err)
-	taints.CleanToBeDeleted(node, ctx.ClientSet, ctx.CordonNodeBeforeTerminate)
+	if ctx.SimulationMode {
+		klog.V(0).Infof("Simulation: skipping CleanToBeDeleted for node %q", node.Name)
+	} else {
+		taints.CleanToBeDeleted(node, ctx.ClientSet, ctx.CordonNodeBeforeTerminate)
+	}
 	nodeDeletionTracker.EndDeletion(nodeGroupId, node.Name, status)
 }
 

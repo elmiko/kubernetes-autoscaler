@@ -359,7 +359,13 @@ func main() {
 		klog.Fatalf("Failed to start metrics: %v", err)
 	}()
 
-	if !leaderElection.LeaderElect {
+	if autoscalingOpts.SimulationMode {
+		if autoscalingOpts.StatusConfigMapName == "cluster-autoscaler-status" {
+			autoscalingOpts.StatusConfigMapName = "cluster-autoscaler-simulation-status"
+		}
+	}
+
+	if !leaderElection.LeaderElect || autoscalingOpts.SimulationMode {
 		run(healthCheck, debuggingSnapshotter)
 	} else {
 		id, err := os.Hostname()

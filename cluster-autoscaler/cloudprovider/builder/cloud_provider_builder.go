@@ -18,6 +18,7 @@ package builder
 
 import (
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/simulation"
 	"k8s.io/autoscaler/cluster-autoscaler/config"
 	"k8s.io/autoscaler/cluster-autoscaler/context"
 	"k8s.io/client-go/informers"
@@ -44,6 +45,11 @@ func NewCloudProvider(opts config.AutoscalingOptions, informerFactory informers.
 	}
 
 	provider := buildCloudProvider(opts, do, rl, informerFactory)
+
+	if opts.SimulationMode {
+		provider = simulation.NewSimulationProvider(provider)
+	}
+
 	if provider != nil {
 		return provider
 	}
