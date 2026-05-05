@@ -53,14 +53,15 @@ const (
 )
 
 type testConfigBuilder struct {
-	scalableType scalableTestType
-	namespace    string
-	clusterName  string
-	namePrefix   string
-	nodeCount    int
-	annotations  map[string]string
-	capacity     map[string]string
-	taints       []interface{}
+	scalableType     scalableTestType
+	namespace        string
+	clusterName      string
+	namePrefix       string
+	nodeCount        int
+	annotations      map[string]string
+	capacity         map[string]string
+	taints           []interface{}
+	authoritativeAPI string
 }
 
 // NewTestConfigBuilder returns a builder for dynamically constructing mock ClusterAPI resources for testing.
@@ -91,6 +92,7 @@ func (b *testConfigBuilder) Build() *TestConfig {
 			b.annotations,
 			b.capacity,
 			b.taints,
+			b.authoritativeAPI,
 		)[0],
 	)[0]
 }
@@ -110,6 +112,7 @@ func (b *testConfigBuilder) BuildMultiple(configCount int) []*TestConfig {
 			b.annotations,
 			b.capacity,
 			b.taints,
+			b.authoritativeAPI,
 		)...,
 	)
 }
@@ -197,6 +200,11 @@ func (b *testConfigBuilder) WithCapacity(c map[string]string) *testConfigBuilder
 	return b
 }
 
+func (b *testConfigBuilder) WithAuthoritativeAPI(a string) *testConfigBuilder {
+	b.authoritativeAPI = a
+	return b
+}
+
 // TestConfig contains clusterspecific information about a single test configuration.
 type TestConfig struct {
 	spec        *TestSpec
@@ -255,6 +263,12 @@ func createTestConfigs(specs ...TestSpec) []*TestConfig {
 			panic(err)
 		}
 
+		if len(spec.authoritativeAPI) > 0 {
+			if err := unstructured.SetNestedField(config.machineSet.Object, spec.authoritativeAPI, "spec", "authoritativeAPI"); err != nil {
+				panic(err)
+			}
+		}
+
 		machineOwner := metav1.OwnerReference{
 			Name: config.machineSet.GetName(),
 			Kind: config.machineSet.GetKind(),
@@ -273,35 +287,37 @@ func createTestConfigs(specs ...TestSpec) []*TestConfig {
 
 // TestSpec contains the clusterapi specific information for a single test specification.
 type TestSpec struct {
-	annotations     map[string]string
-	capacity        map[string]string
-	taints          []interface{}
-	machineSetName  string
-	machinePoolName string
-	clusterName     string
-	namespace       string
-	nodeCount       int
+	annotations      map[string]string
+	capacity         map[string]string
+	taints           []interface{}
+	machineSetName   string
+	machinePoolName  string
+	clusterName      string
+	namespace        string
+	nodeCount        int
+	authoritativeAPI string
 }
 
-func createTestSpecs(namespace, clusterName, namePrefix string, scalableResourceCount, nodeCount int, annotations map[string]string, capacity map[string]string, taints []interface{}) []TestSpec {
+func createTestSpecs(namespace, clusterName, namePrefix string, scalableResourceCount, nodeCount int, annotations map[string]string, capacity map[string]string, taints []interface{}, authoritativeAPI string) []TestSpec {
 	var specs []TestSpec
 
 	for i := 0; i < scalableResourceCount; i++ {
-		specs = append(specs, createTestSpec(namespace, clusterName, fmt.Sprintf("%s-%d", namePrefix, i), nodeCount, annotations, capacity, taints))
+		specs = append(specs, createTestSpec(namespace, clusterName, fmt.Sprintf("%s-%d", namePrefix, i), nodeCount, annotations, capacity, taints, authoritativeAPI))
 	}
 
 	return specs
 }
 
-func createTestSpec(namespace, clusterName, name string, nodeCount int, annotations map[string]string, capacity map[string]string, taints []interface{}) TestSpec {
+func createTestSpec(namespace, clusterName, name string, nodeCount int, annotations map[string]string, capacity map[string]string, taints []interface{}, authoritativeAPI string) TestSpec {
 	return TestSpec{
-		annotations:    annotations,
-		capacity:       capacity,
-		machineSetName: name,
-		clusterName:    clusterName,
-		namespace:      namespace,
-		nodeCount:      nodeCount,
-		taints:         taints,
+		annotations:      annotations,
+		capacity:         capacity,
+		machineSetName:   name,
+		clusterName:      clusterName,
+		namespace:        namespace,
+		nodeCount:        nodeCount,
+		taints:           taints,
+		authoritativeAPI: authoritativeAPI,
 	}
 }
 
@@ -646,4 +662,82 @@ func (c *testMachineController) DeleteResource(informer informers.GenericInforme
 		}
 		return false, err
 	})
+}
+
+type testUnstructuredBuilder struct {
+	kind       string
+	apiVersion string
+	name       string
+	namespace  string
+	labels     map[string]string
+	spec       map[string]interface{}
+}
+
+// NewTestUnstructuredBuilder returns a builder for dynamically constructing unstructured resources for testing.
+// by default it makes a machine api machineset.
+func NewTestUnstructuredBuilder() *testUnstructuredBuilder {
+	return &testUnstructuredBuilder{
+		kind:       machineSetKind,
+		apiVersion: path.Join(MAPIGroup, MAPIVersion),
+		name:       fmt.Sprintf("resource-%s", RandomString(6)),
+		namespace:  machineAPINamespace,
+	}
+}
+
+func (b *testUnstructuredBuilder) Build() *unstructured.Unstructured {
+	ret := unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"kind":       b.kind,
+			"apiVersion": b.apiVersion,
+			"metadata": map[string]interface{}{
+				"name":      b.name,
+				"namespace": b.namespace,
+			},
+			"spec":   map[string]interface{}{},
+			"status": map[string]interface{}{},
+		},
+	}
+
+	if b.labels != nil {
+		unstructured.SetNestedStringMap(ret.Object, b.labels, "metadata", "labels")
+	}
+
+	if b.spec != nil {
+		unstructured.SetNestedMap(ret.Object, b.spec, "spec")
+	}
+
+	return &ret
+}
+
+func (b *testUnstructuredBuilder) WithKind(k string) *testUnstructuredBuilder {
+	b.kind = k
+	return b
+}
+
+func (b *testUnstructuredBuilder) WithApiVersion(v string) *testUnstructuredBuilder {
+	b.apiVersion = v
+	return b
+}
+
+func (b *testUnstructuredBuilder) WithName(n string) *testUnstructuredBuilder {
+	b.name = n
+	return b
+}
+
+func (b *testUnstructuredBuilder) WithNamespace(n string) *testUnstructuredBuilder {
+	b.namespace = n
+	return b
+}
+
+func (b *testUnstructuredBuilder) WithLabel(k string, v string) *testUnstructuredBuilder {
+	if b.labels == nil {
+		b.labels = map[string]string{}
+	}
+	b.labels[k] = v
+	return b
+}
+
+func (b *testUnstructuredBuilder) WithSpec(s map[string]interface{}) *testUnstructuredBuilder {
+	b.spec = s
+	return b
 }

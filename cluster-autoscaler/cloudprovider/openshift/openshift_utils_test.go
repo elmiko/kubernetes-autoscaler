@@ -119,18 +119,7 @@ func TestUtilParseScalingBounds(t *testing.T) {
 		max: 1,
 	}} {
 		t.Run(tc.description, func(t *testing.T) {
-			machineSet := unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"kind":       machineSetKind,
-					"apiVersion": "cluster.x-k8s.io/v1alpha3",
-					"metadata": map[string]interface{}{
-						"name":      "test",
-						"namespace": "default",
-					},
-					"spec":   map[string]interface{}{},
-					"status": map[string]interface{}{},
-				},
-			}
+			machineSet := NewTestUnstructuredBuilder().Build()
 			machineSet.SetAnnotations(tc.annotations)
 
 			min, max, err := parseScalingBounds(machineSet.GetAnnotations())
@@ -169,18 +158,9 @@ func TestUtilGetOwnerByKindMachine(t *testing.T) {
 		expectedOwnerRef: nil,
 	}, {
 		description: "not owned as not the same Kind",
-		machine: &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"kind":       machineKind,
-				"apiVersion": "cluster.x-k8s.io/v1alpha3",
-				"metadata": map[string]interface{}{
-					"name":      "test",
-					"namespace": "default",
-				},
-				"spec":   map[string]interface{}{},
-				"status": map[string]interface{}{},
-			},
-		},
+		machine: NewTestUnstructuredBuilder().
+			WithKind(machineKind).
+			Build(),
 		machineOwnerRefs: []metav1.OwnerReference{
 			{
 				Kind: "Other",
@@ -191,18 +171,9 @@ func TestUtilGetOwnerByKindMachine(t *testing.T) {
 		expectedOwnerRef: nil,
 	}, {
 		description: "not owned because no OwnerReference.Name",
-		machine: &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"kind":       machineKind,
-				"apiVersion": "cluster.x-k8s.io/v1alpha3",
-				"metadata": map[string]interface{}{
-					"name":      "test",
-					"namespace": "default",
-				},
-				"spec":   map[string]interface{}{},
-				"status": map[string]interface{}{},
-			},
-		},
+		machine: NewTestUnstructuredBuilder().
+			WithKind(machineKind).
+			Build(),
 		machineOwnerRefs: []metav1.OwnerReference{
 			{
 				Kind: machineSetKind,
@@ -212,18 +183,9 @@ func TestUtilGetOwnerByKindMachine(t *testing.T) {
 		expectedOwnerRef: nil,
 	}, {
 		description: "owned as UID values match and same Kind and Name not empty",
-		machine: &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"kind":       machineKind,
-				"apiVersion": "cluster.x-k8s.io/v1alpha3",
-				"metadata": map[string]interface{}{
-					"name":      "test",
-					"namespace": "default",
-				},
-				"spec":   map[string]interface{}{},
-				"status": map[string]interface{}{},
-			},
-		},
+		machine: NewTestUnstructuredBuilder().
+			WithKind(machineKind).
+			Build(),
 		machineOwnerRefs: []metav1.OwnerReference{
 			{
 				Kind: machineSetKind,
@@ -539,82 +501,28 @@ func TestParseMaxPodsCapacity(t *testing.T) {
 	}
 }
 
-func Test_clusterNameFromResource(t *testing.T) {
+func TestClusterNameFromResource(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		resource *unstructured.Unstructured
 		want     string
 	}{{
-		name: "cluster name not set, v1alpha1 MachineSet",
-		resource: &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"kind":       machineSetKind,
-				"apiVersion": "cluster.k8s.io/v1alpha1",
-				"metadata": map[string]interface{}{
-					"name":      "foo",
-					"namespace": "default",
-				},
-				"spec": map[string]interface{}{
-					"replicas": int64(1),
-				},
-				"status": map[string]interface{}{},
-			},
-		},
-		want: "",
+		name:     "cluster name not set returns an empty string",
+		resource: NewTestUnstructuredBuilder().Build(),
+		want:     "",
 	}, {
-		name: "cluster name not set, v1alpha2 MachineSet",
-		resource: &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"kind":       machineSetKind,
-				"apiVersion": "cluster.x-k8s.io/v1alpha2",
-				"metadata": map[string]interface{}{
-					"name":      "foo",
-					"namespace": "default",
-				},
-				"spec": map[string]interface{}{
-					"replicas": int64(1),
-				},
-				"status": map[string]interface{}{},
-			},
-		},
-		want: "",
-	}, {
-		name: "cluster name set in MachineSet labels, v1alpha2 MachineSet",
-		resource: &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"kind":       machineSetKind,
-				"apiVersion": "cluster.x-k8s.io/v1alpha2",
-				"metadata": map[string]interface{}{
-					"name":      "foo",
-					"namespace": "default",
-					"labels": map[string]interface{}{
-						clusterNameLabel: "bar",
-					},
-				},
-				"spec": map[string]interface{}{
-					"replicas": int64(1),
-				},
-				"status": map[string]interface{}{},
-			},
-		},
+		name: "cluster name set in MachineSet labels returns label value",
+		resource: NewTestUnstructuredBuilder().
+			WithLabel(clusterNameLabel, "bar").
+			Build(),
 		want: "bar",
 	}, {
 		name: "cluster name set in spec, v1alpha3 MachineSet",
-		resource: &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"kind":       machineSetKind,
-				"apiVersion": "cluster.x-k8s.io/v1alpha3",
-				"metadata": map[string]interface{}{
-					"name":      "foo",
-					"namespace": "default",
-				},
-				"spec": map[string]interface{}{
-					"clusterName": "bar",
-					"replicas":    int64(1),
-				},
-				"status": map[string]interface{}{},
-			},
-		},
+		resource: NewTestUnstructuredBuilder().
+			WithSpec(map[string]interface{}{
+				"clusterName": "bar",
+			}).
+			Build(),
 		want: "bar",
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -695,6 +603,65 @@ func TestGetSystemArchitectureFromEnvOrDefault(t *testing.T) {
 			}
 			if got := GetDefaultScaleFromZeroArchitecture(); got != tc.want {
 				t.Errorf("GetDefaultScaleFromZeroArchitecture() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsScalableResourceMachineAPIAuthoritative(t *testing.T) {
+	tcs := []struct {
+		name                 string
+		specAuthoritativeAPI string
+		expected             bool
+		kind                 string
+		version              string
+	}{
+		{
+			name:     ".spec.authoritativeAPI field not preset returns true",
+			expected: true,
+		},
+		{
+			name:                 ".spec.authoritativeAPI set to MachineAPI returns true",
+			specAuthoritativeAPI: AuthoritativeMachineAPI,
+			expected:             true,
+		},
+		{
+			name:                 ".spec.authoritativeAPI set to ClusterAPI returns false",
+			specAuthoritativeAPI: AuthoritativeClusterAPI,
+			expected:             false,
+		},
+		{
+			name:     "incorrect kind returns false",
+			kind:     "BadKind",
+			expected: false,
+		},
+		{
+			name:     "incorrect version returns false",
+			version:  "bad.k8s.io/v1alphaX",
+			expected: false,
+		},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			kind := machineSetKind
+			if len(tc.kind) > 0 {
+				kind = tc.kind
+			}
+			version := "machine.openshift.io/v1beta1"
+			if len(tc.version) > 0 {
+				version = tc.version
+			}
+			machineSet := NewTestUnstructuredBuilder().
+				WithKind(kind).
+				WithApiVersion(version).
+				Build()
+			if len(tc.specAuthoritativeAPI) > 0 {
+				unstructured.SetNestedField(machineSet.Object, tc.specAuthoritativeAPI, "spec", "authoritativeAPI")
+			}
+
+			observed := isScalableResourceMachineAPIAuthoritative(machineSet)
+			if observed != tc.expected {
+				t.Errorf("expected %v, observed %v", tc.expected, observed)
 			}
 		})
 	}

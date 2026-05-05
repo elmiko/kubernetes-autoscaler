@@ -17,7 +17,9 @@ limitations under the License.
 package openshift
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"path"
 	"reflect"
 
@@ -33,8 +35,9 @@ import (
 	klog "k8s.io/klog/v2"
 
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/clusterapi"
 	coreoptions "k8s.io/autoscaler/cluster-autoscaler/core/options"
-	"k8s.io/autoscaler/cluster-autoscaler/utils/errors"
+	caserrors "k8s.io/autoscaler/cluster-autoscaler/utils/errors"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/gpu"
 )
 
@@ -47,23 +50,20 @@ const (
 var _ cloudprovider.CloudProvider = (*provider)(nil)
 
 type provider struct {
-	controller      *machineController
-	resourceLimiter *cloudprovider.ResourceLimiter
-	// TODO implement this after MAPI works
-	//clusterapiProvider cloudprovider.CloudProvider
+	controller         *machineController
+	resourceLimiter    *cloudprovider.ResourceLimiter
+	clusterapiProvider cloudprovider.CloudProvider
 }
 
 func newProvider(
 	rl *cloudprovider.ResourceLimiter,
 	controller *machineController,
-	// TODO after MAPI works
-	// clusterapiProvider cloudprovider.CloudProvider,
+	clusterapiProvider cloudprovider.CloudProvider,
 ) cloudprovider.CloudProvider {
 	return &provider{
-		resourceLimiter: rl,
-		controller:      controller,
-		// TODO after MAPI works
-		// clusterapiProvider: clusterapiProvider,
+		resourceLimiter:    rl,
+		controller:         controller,
+		clusterapiProvider: clusterapiProvider,
 	}
 }
 
@@ -76,17 +76,36 @@ func (p *provider) GetResourceLimiter() (*cloudprovider.ResourceLimiter, error) 
 }
 
 func (p *provider) NodeGroups() []cloudprovider.NodeGroup {
+	// these are all the MachineAPI authoritative node groups
 	nodegroups, err := p.controller.nodeGroups()
 	if err != nil {
 		klog.Errorf("error getting node groups: %v", err)
 		return nil
 	}
+
+	// if we have a clusterapi provider we need to check for authoritative machinesets there.
+	if p.clusterapiProvider != nil {
+		capiNodegroups := p.clusterapiProvider.NodeGroups()
+		if capiNodegroups != nil {
+			// if we have any ClusterAPI node groups, filter them to see if any are authoritative, and add them to the list
+			capiNodegroups = filterClusterAPIAuthoritativeResources(nodegroups, capiNodegroups)
+			nodegroups = append(nodegroups, capiNodegroups...)
+		}
+	}
+
 	return nodegroups
 }
 
 func (p *provider) NodeGroupForNode(node *corev1.Node) (cloudprovider.NodeGroup, error) {
 	ng, err := p.controller.nodeGroupForNode(node)
 	if err != nil {
+		if errors.Is(err, errNonAuthoritativeResource) {
+			// if the MachineAPI resource is non-authoritative we need to ask the ClusterAPI provider.
+			if p.clusterapiProvider != nil {
+				return p.clusterapiProvider.NodeGroupForNode(node)
+			}
+		}
+
 		return nil, err
 	}
 	if ng == nil || reflect.ValueOf(ng).IsNil() {
@@ -103,12 +122,17 @@ func (p *provider) HasInstance(node *corev1.Node) (bool, error) {
 	machine, err := p.controller.findMachine(path.Join(ns, machineID))
 	if machine != nil {
 		return true, nil
+	} else {
+		// if we cannot find the Machine within the MachineAPI resources, we need to check the ClusterAPI resources as well.
+		if p.clusterapiProvider != nil {
+			return p.clusterapiProvider.HasInstance(node)
+		}
 	}
 
 	return false, fmt.Errorf("machine not found for node %s: %v", node.Name, err)
 }
 
-func (*provider) Pricing() (cloudprovider.PricingModel, errors.AutoscalerError) {
+func (*provider) Pricing() (cloudprovider.PricingModel, caserrors.AutoscalerError) {
 	return nil, cloudprovider.ErrNotImplemented
 }
 
@@ -158,9 +182,12 @@ func (p *provider) GetNodeGpuConfig(node *corev1.Node) *cloudprovider.GpuConfig 
 
 // BuildOpenShift builds CloudProvider implementation for machine api.
 func BuildOpenShift(opts *coreoptions.AutoscalerOptions, do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
-	// create the inner capi provider, this is used when we can determine that a resource is capi authoritative.
-	// TODO after MAPI works
-	// clusterapiProvider := clusterapi.BuildClusterAPI(opts, do, rl)
+	var clusterapiProvider cloudprovider.CloudProvider = nil
+	// allow to override clusterapi provider creation for environments that don't have clusterapi.
+	if capiOverride := os.Getenv("OPENSHIFT_CLUSTERAPI_DISABLE"); len(capiOverride) == 0 {
+		// create the inner capi provider, this is used when we can determine that a resource is capi authoritative.
+		clusterapiProvider = clusterapi.BuildClusterAPI(opts, do, rl)
+	}
 
 	managementKubeconfig := opts.CloudConfig
 	if managementKubeconfig == "" && !opts.ClusterAPICloudConfigAuthoritative {
@@ -214,8 +241,8 @@ func BuildOpenShift(opts *coreoptions.AutoscalerOptions, do cloudprovider.NodeGr
 	stopCh := make(chan struct{})
 
 	controller, err := newMachineController(
-		// TODO after MAPI works
-		// clusterapiProvider,
+		// TODO add this if needed
+		//clusterapiProvider,
 		managementClient,
 		workloadClient,
 		managementDiscoveryClient,
@@ -233,7 +260,6 @@ func BuildOpenShift(opts *coreoptions.AutoscalerOptions, do cloudprovider.NodeGr
 	return newProvider(
 		rl,
 		controller,
-		// TODO after MAPI works
-		// clusterapiProvider,
+		clusterapiProvider,
 	)
 }

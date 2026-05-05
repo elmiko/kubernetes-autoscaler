@@ -32,7 +32,7 @@ func TestProviderConstructorProperties(t *testing.T) {
 	controller := NewTestMachineController(t)
 	defer controller.Stop()
 
-	provider := newProvider(&resourceLimits, controller.machineController)
+	provider := newProvider(&resourceLimits, controller.machineController, nil)
 	if actual := provider.Name(); actual != cloudprovider.OpenShiftProviderName {
 		t.Errorf("expected %q, got %q", cloudprovider.OpenShiftProviderName, actual)
 	}
@@ -120,7 +120,7 @@ func BenchmarkNodeGroups(b *testing.B) {
 		b.Fatalf("unexpected error: %v", err)
 	}
 
-	provider := newProvider(&resourceLimits, controller.machineController)
+	provider := newProvider(&resourceLimits, controller.machineController, nil)
 	if actual := provider.Name(); actual != cloudprovider.ClusterAPIProviderName {
 		b.Errorf("expected %q, got %q", cloudprovider.ClusterAPIProviderName, actual)
 	}

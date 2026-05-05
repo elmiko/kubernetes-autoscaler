@@ -522,6 +522,10 @@ func TestControllerNodeGroups(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assertNodegroupLen(t, controller, 5)
+	// clean up
+	if err := controller.DeleteTestConfigs(machineSetConfigs...); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// Test #5: machineset with bad scaling bounds results in an error and no nodegroups
 	annotations = map[string]string{
@@ -541,6 +545,28 @@ func TestControllerNodeGroups(t *testing.T) {
 	if _, err := controller.nodeGroups(); err == nil {
 		t.Fatalf("expected an error")
 	}
+	// clean up
+	if err := controller.DeleteTestConfigs(machineSetConfigs...); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Test #6: machineset that is non-authoritative results in no nodegroups
+	annotations = map[string]string{
+		nodeGroupMinSizeAnnotationKey: "1",
+		nodeGroupMaxSizeAnnotationKey: "2",
+	}
+
+	machineSetConfigs = NewTestConfigBuilder().
+		ForMachineSet().
+		WithClusterName(clusterName).
+		WithNodeCount(1).
+		WithAnnotations(annotations).
+		WithAuthoritativeAPI("ClusterAPI").
+		BuildMultiple(1)
+	if err := controller.AddTestConfigs(machineSetConfigs...); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertNodegroupLen(t, controller, 0)
 }
 
 func TestControllerNodeGroupsNodeCount(t *testing.T) {

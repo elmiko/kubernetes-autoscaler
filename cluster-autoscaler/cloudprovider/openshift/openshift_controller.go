@@ -498,6 +498,11 @@ func (c *machineController) nodeGroups() ([]cloudprovider.NodeGroup, error) {
 	nodegroups := make([]cloudprovider.NodeGroup, 0, len(scalableResources))
 
 	for _, r := range scalableResources {
+		if !isScalableResourceMachineAPIAuthoritative(r) {
+			// if this MachineAPI MachineSet is not authoritative, we skip adding it to the list of node groups.
+			continue
+		}
+
 		ng, err := newNodeGroupFromScalableResource(c, r)
 		if err != nil {
 			return nil, err
@@ -518,6 +523,11 @@ func (c *machineController) nodeGroupForNode(node *corev1.Node) (*nodegroup, err
 	}
 	if scalableResource == nil {
 		return nil, nil
+	}
+
+	if !isScalableResourceMachineAPIAuthoritative(scalableResource) {
+		// if this MachineAPI MachineSet is not authoritative we return a special error so that the calling function can check ClusterAPI.
+		return nil, errNonAuthoritativeResource
 	}
 
 	nodegroup, err := newNodeGroupFromScalableResource(c, scalableResource)

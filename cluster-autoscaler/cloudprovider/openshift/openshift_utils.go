@@ -19,6 +19,7 @@ package openshift
 import (
 	"fmt"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/utils/units"
 )
 
@@ -39,6 +41,8 @@ const (
 	MAPIVersion = "v1beta1"
 	// namespace used by OpenShift for machine-api resources and the cluster autoscaler
 	machineAPINamespace = "openshift-machine-api"
+	// namespace used by OpenShift for cluster-api resources
+	clusterAPINamespace = "openshift-cluster-api"
 	// nodeGroupMinSizeAnnotationKey and nodeGroupMaxSizeAnnotationKey are the keys
 	// used in MachineSet and MachineDeployment annotations to specify the limits
 	nodeGroupMinSizeAnnotationKey        = "machine.openshift.io/cluster-api-autoscaler-node-group-min-size"
@@ -98,6 +102,11 @@ const (
 	scaleUpFromZeroDefaultArchEnvVar = "CAPI_SCALE_ZERO_DEFAULT_ARCH"
 	// GpuDeviceType is used if DRA device is GPU
 	GpuDeviceType = "gpu"
+
+	// Constants for helping with authoritative API
+	// see https://github.com/openshift/enhancements/blob/master/enhancements/machine-api/converting-machine-api-to-cluster-api.md
+	AuthoritativeMachineAPI = "MachineAPI"
+	AuthoritativeClusterAPI = "ClusterAPI"
 )
 
 var (
@@ -118,6 +127,10 @@ var (
 	// errInvalidMaxAnnotationValue is the error returned when a
 	// machine set has a non-integral max annotation value.
 	errInvalidMaxAnnotation = errors.New("invalid max annotation")
+
+	// errNonAuthoritativeResource is the error returned when a
+	// scalable resource is not authoritative.
+	errNonAuthoritativeResource = errors.New("non-authoritative resource")
 
 	zeroQuantity = resource.MustParse("0")
 
@@ -392,4 +405,66 @@ func GetDefaultScaleFromZeroArchitecture() SystemArchitecture {
 		systemArchitecture = &arch
 	})
 	return *systemArchitecture
+}
+
+// isScalableResourceMachineAPIAuthoritative will return true if the unstructured resource is a MAPI MachineSet and has
+// .spec.authoritativeAPI set to "MachineAPI". If the authoritative field is not present, this function will return true
+// as we are most likely dealing with an older version of the resource.
+func isScalableResourceMachineAPIAuthoritative(res *unstructured.Unstructured) bool {
+	if res.GetKind() != machineSetKind || res.GetAPIVersion() != path.Join(MAPIGroup, MAPIVersion) {
+		klog.V(5).Infof("observed unexpected resource during authoritative detection: %s, %s", res.GetKind(), res.GetAPIVersion())
+		return false
+	}
+
+	if value, found, err := unstructured.NestedString(res.Object, "spec", "authoritativeAPI"); err != nil {
+		klog.V(1).Infof("unexpected error when getting .spec.authoritativeAPI for %q: %v", res.GetName(), err)
+		return false
+	} else if !found {
+		// if the `.spec.authoritativeAPI` field does not exist, we are most likely dealing with an older version
+		// of the MachineSet resource, possibly due to a version skew. in these cases we assume that the MachineAPI
+		// version is authoritative as the API has not been upgraded for ClusterAPI yet.
+		return true
+	} else if value == AuthoritativeMachineAPI {
+		return true
+	}
+
+	return false
+}
+
+// filterClusterAPIAuthoritativeResources will return a list of NodeGroups representing ClusterAPI authoritative MachineSets.
+func filterClusterAPIAuthoritativeResources(mapiGroups []cloudprovider.NodeGroup, capiGroups []cloudprovider.NodeGroup) []cloudprovider.NodeGroup {
+	seenGroups := map[string]cloudprovider.NodeGroup{}
+	for _, ng := range mapiGroups {
+		// gather the names of authoritative node groups, these will be compared
+		// with clusterapi node groups to exclude non-authoritative resources.
+		if n, ok := ng.(*nodegroup); ok {
+			name := n.scalableResource.unstructured.GetName()
+			seenGroups[name] = ng
+		} else {
+			klog.V(5).Infof("unable to convert node group %q for filtering", ng.Id())
+		}
+	}
+
+	capiAuthoritativeGroups := []cloudprovider.NodeGroup{}
+	for _, ng := range capiGroups {
+		// we are limited to using the CloudProvider interface since these node groups originate from the clusterapi provider.
+		// a node group Id for clusterapi is in the format "Kind/namespace/name"
+		// we want to isolate the name and then compare to see if it exists in the seen groups.
+		idparts := strings.Split(ng.Id(), "/")
+		if len(idparts) == 3 {
+			// check the kind and namespace
+			if idparts[0] != resourceNameMachineSet || idparts[1] != clusterAPINamespace {
+				klog.V(5).Infof("skipping resource %q", ng.Id())
+				continue
+			}
+			if _, exists := seenGroups[idparts[2]]; !exists {
+				// this node group has not been seen before
+				capiAuthoritativeGroups = append(capiAuthoritativeGroups, ng)
+			}
+		} else {
+			klog.V(5).Infof("possible malformed id %q, skipping authoritative check", ng.Id())
+		}
+	}
+
+	return capiAuthoritativeGroups
 }
